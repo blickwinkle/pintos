@@ -65,6 +65,8 @@ static char **parse_options (char **argv);
 static void run_actions (char **argv);
 static void usage (void);
 
+static void kernel_shell(void);
+
 #ifdef FILESYS
 static void locate_block_devices (void);
 static void locate_block_device (enum block_type, const char *name);
@@ -134,12 +136,49 @@ pintos_init (void)
     run_actions (argv);
   } else {
     // TODO: no command line passed to kernel. Run interactively 
+    kernel_shell();
   }
 
   /* Finish up. */
   shutdown ();
   thread_exit ();
 }
+
+static bool
+shell_helper(char *input_buffer, const size_t buffer_size) {
+  char *p = input_buffer;
+  while (p - input_buffer < buffer_size) {
+    *p = (char)input_getc();
+    putchar(*p);
+    if (*p == '\n') {
+      *p = '\0';
+      if (strcmp(input_buffer, "whoami") == 0) {
+        printf("blickwinkle\n");
+        break;
+      } else if (strcmp(input_buffer, "exit") == 0) {
+        return false;
+      } else {
+        printf("invalid command\n");
+        break;
+      }
+    }
+    ++p;
+  }
+  return true;
+}
+
+
+static void 
+kernel_shell(void)
+{
+  static const size_t buffer_size = 256;
+  char *input_buffer = malloc(buffer_size + 1);
+  do {
+    printf("\nPKUOS> ");
+  } while(shell_helper(input_buffer, buffer_size));
+}
+
+
 
 /** Clear the "BSS", a segment that should be initialized to
    zeros.  It isn't actually stored on disk or zeroed by the
