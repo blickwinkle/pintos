@@ -1,0 +1,31 @@
+{
+    "files.associations": {
+        "stdint.h": "c",
+        "stddef.h": "c",
+        "stdbool.h": "c",
+        "cstdint": "c",
+        "optional": "c",
+        "ostream": "c",
+        "system_error": "c",
+        "array": "c",
+        "functional": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "utility": "c",
+        "*.tcc": "c",
+        "string_view": "c",
+        "random": "c",
+        "limits": "c",
+        "numeric": "c",
+        "synch.h": "c",
+        "stdio.h": "c",
+        "string.h": "c",
+        "random.h": "c",
+        "debug.h": "c",
+        "thread.h": "c",
+        "inttypes.h": "c",
+        "fixpoint.h": "c",
+        "palloc.h": "c",
+        "typeinfo": "c"
+    }
+}

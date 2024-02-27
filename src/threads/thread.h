@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "lib/kernel/fixpoint.h"
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -23,6 +24,16 @@ typedef int tid_t;
 #define PRI_MIN 0                       /**< Lowest priority. */
 #define PRI_DEFAULT 31                  /**< Default priority. */
 #define PRI_MAX 63                      /**< Highest priority. */
+#define DONATE_MAX 8
+
+#define PRIORITY_UPDATE_FRE 4           /**< Interval ticks when recaculate priority. Used in 4.4BSD*/
+
+
+struct donated_priority {
+   int priority;
+   struct lock *lock;
+   struct list_elem elem;
+};
 
 /** A kernel thread or user process.
 
@@ -85,9 +96,14 @@ struct thread
     /* Owned by thread.c. */
     tid_t tid;                          /**< Thread identifier. */
     enum thread_status status;          /**< Thread state. */
+    struct lock *wait_lock;             /**< Blocking for wait this block*/
     char name[16];                      /**< Name (for debugging purposes). */
     uint8_t *stack;                     /**< Saved stack pointer. */
     int priority;                       /**< Priority. */
+    struct list donated_list;           /**< Donated priority list*/
+    int origin_priority;                /**< Store origin priority in donated scene*/
+    fp recent_cpu;                      /**< CPU time the thread has used recently. Only used with BSD4.4 */
+    int nice;                           /**< Nice value for caclulate priority . Only used with BSD4.4 */
     struct list_elem allelem;           /**< List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -109,6 +125,18 @@ extern bool thread_mlfqs;
 
 void thread_init (void);
 void thread_start (void);
+
+bool
+thread_priority_bigger (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED);
+
+
+void
+thread_try_yiled(void);
+void
+thread_try_yiled_mlps(void);
+void
+thread_priority_change (struct thread *t, int new_priority);
 
 void thread_tick (void);
 void thread_print_stats (void);
@@ -138,4 +166,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+void update_recent_cpu(int64_t ticks);
+void update_load_avg(int64_t ticks);
+void update_priority(int64_t ticks);
 #endif /**< threads/thread.h */

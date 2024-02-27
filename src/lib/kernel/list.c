@@ -43,14 +43,14 @@ is_head (struct list_elem *elem)
 
 /** Returns true if ELEM is an interior element,
    false otherwise. */
-static inline bool
+  bool
 is_interior (struct list_elem *elem)
 {
   return elem != NULL && elem->prev != NULL && elem->next != NULL;
 }
 
 /** Returns true if ELEM is a tail, false otherwise. */
-static inline bool
+  bool
 is_tail (struct list_elem *elem)
 {
   return elem != NULL && elem->prev != NULL && elem->next == NULL;
@@ -168,6 +168,7 @@ list_tail (struct list *list)
 void
 list_insert (struct list_elem *before, struct list_elem *elem)
 {
+  
   ASSERT (is_interior (before) || is_tail (before));
   ASSERT (elem != NULL);
 

@@ -30,6 +30,19 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+/** Queue of sleep thread.
+ * Initialized by timer_init()
+*/
+static struct list sleep_queue;
+static int64_t minimu_end_time;
+// static struct lock sleep_queue_lock;
+
+struct sleep_thread {
+  struct semaphore sp;
+  int64_t end_time;
+  struct list_elem sleep_elem;
+};
+
 /** Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
@@ -37,6 +50,8 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  // lock_init(&sleep_queue_lock);
+  list_init(&sleep_queue);
 }
 
 /** Calibrates loops_per_tick, used to implement brief delays. */
@@ -84,6 +99,59 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+static bool
+sleep_endtime_smaller (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED) 
+{
+  const struct sleep_thread *a = list_entry (a_, struct sleep_thread, sleep_elem);
+  const struct sleep_thread *b = list_entry (b_, struct sleep_thread, sleep_elem);
+  
+  return a->end_time < b->end_time;
+}
+
+
+static void
+sleep_queue_push (int64_t end_time) 
+{
+  struct sleep_thread st;
+  st.end_time = end_time;
+  sema_init(&st.sp, 0);
+
+  enum intr_level old_level = intr_disable ();
+  // lock_acquire(&sleep_queue_lock);
+  // list_push_back (&sleep_queue, &st.sleep_elem);
+  list_insert_ordered(&sleep_queue, &st.sleep_elem, sleep_endtime_smaller, NULL);
+  // lock_release(&sleep_queue_lock);
+  intr_set_level (old_level);
+
+  sema_down(&st.sp);
+}
+
+static void
+sleep_queue_check (void)
+{
+  struct list_elem *e;
+  struct sleep_thread *st;
+  // lock_acquire(&sleep_queue_lock);
+
+  int64_t now = timer_ticks ();
+  enum intr_level old_level = intr_disable ();
+  for (e = list_begin (&sleep_queue); e != list_end (&sleep_queue); ) {
+    st = list_entry (e, struct sleep_thread, sleep_elem);
+    if (st->end_time <= now) {
+      sema_up(&st->sp);
+      struct list_elem *tmp = e;
+      e = list_next(e);
+      list_remove(tmp);
+    } else {
+      break ;
+    }
+  }
+  intr_set_level (old_level);
+
+  // lock_release(&sleep_queue_lock);
+}
+
 /** Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
@@ -92,8 +160,9 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  sleep_queue_push(start + ticks);
+  // while (timer_elapsed (start) < ticks) 
+  //   thread_yield ();
 }
 
 /** Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -170,7 +239,17 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
+  // enum intr_level old_level = intr_disable ();
   ticks++;
+  sleep_queue_check();
+
+  if (thread_mlfqs) {
+    /** Recaculate BSD4.4 params*/
+    update_recent_cpu(ticks);
+    update_load_avg(ticks);
+    update_priority(ticks);
+  }
+  
   thread_tick ();
 }
 
