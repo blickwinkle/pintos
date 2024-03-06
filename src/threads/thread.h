@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 #include "lib/kernel/fixpoint.h"
+#include "threads/synch.h"
+
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -33,6 +35,14 @@ struct donated_priority {
    int priority;
    struct lock *lock;
    struct list_elem elem;
+};
+
+struct child_thread {
+   tid_t tid;
+   int exit_status;                     /**< Exit status of the thread. */
+   struct list_elem elem;
+   struct semaphore exit_sema;               /**< Semaphore for waiting child thread. */
+   bool father_exit;                     /**< If father thread exit, then when child thread exit, it should free child_thread self. */
 };
 
 /** A kernel thread or user process.
@@ -111,7 +121,13 @@ struct thread
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /**< Page directory. */
+    uint32_t *pagedir;                  /**< Page directory. */               
+    struct list child_list;             /**< List of child threads. */
+    struct thread *parent;              /**< Parent thread. */
+    struct child_thread *child_self;    /**< Child thread. */
+    int next_fd;                      /**< Next file descriptor. */
+    struct list file_list;             /**< List of file descriptors. */
+    struct file *exec_file;           /**< Executable file. */
 #endif
 
     /* Owned by thread.c. */
@@ -152,6 +168,7 @@ tid_t thread_tid (void);
 const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
+void thread_exit_with_status(int status)NO_RETURN;
 void thread_yield (void);
 
 /** Performs some operation on thread t, given auxiliary data AUX. */

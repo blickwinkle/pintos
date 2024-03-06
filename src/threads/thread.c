@@ -13,6 +13,7 @@
 #include "threads/vaddr.h"
 #include "lib/kernel/fixpoint.h"
 #include "devices/timer.h"
+#include "threads/malloc.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -247,7 +248,18 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority, thread_current()->nice, thread_current()->recent_cpu);
-  tid = t->tid = allocate_tid ();
+  tid = t->tid =  allocate_tid ();
+
+#ifdef USERPROG
+  /** TODO: Free the child_self in exit func When father thread end before the child thread*/
+  t->child_self = malloc(sizeof(struct child_thread));
+  sema_init(&t->child_self->exit_sema, 0);
+  t->child_self->tid = tid;
+  t->parent = thread_current();
+  list_push_back(&thread_current()->child_list, &t->child_self->elem);
+  t->child_self->exit_status = -1;
+  t->child_self->father_exit = false;
+#endif
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -263,6 +275,10 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+
+// #ifdef USERPROG
+  
+// #endif
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -381,6 +397,14 @@ thread_exit (void)
   NOT_REACHED ();
 }
 
+void
+thread_exit_with_status(int status) 
+{
+  struct thread *t = thread_current();
+  t->child_self->exit_status = status;
+  thread_exit();
+}
+
 static void 
 insert_thread_to_ready_queue(struct thread *cur) {
   ASSERT(intr_get_level() == INTR_OFF);
@@ -399,6 +423,7 @@ insert_thread_to_ready_queue(struct thread *cur) {
   // }
   list_push_back(&mlps_ready_list[cur->priority], &cur->elem);
 }
+
 
 /** Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
@@ -692,6 +717,14 @@ init_thread (struct thread *t, const char *name, int priority, int nice, fp rece
   t->wait_lock = NULL;
   t->nice = nice;
   list_init(&t->donated_list);
+#ifdef USERPROG
+list_init(&t->child_list);
+list_init(&t->file_list);
+t->next_fd = 2;
+t->exec_file = NULL;
+#endif  
+
+
   t->magic = THREAD_MAGIC;
   t->recent_cpu = recent_cpu;
   if (!thread_mlfqs)  {
@@ -699,9 +732,6 @@ init_thread (struct thread *t, const char *name, int priority, int nice, fp rece
   } else {
     t->priority = cacl_priority(t->nice, t->recent_cpu);
   }
-  
- 
-
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);

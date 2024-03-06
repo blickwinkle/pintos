@@ -261,3 +261,95 @@ invalidate_pagedir (uint32_t *pd)
       pagedir_activate (pd);
     } 
 }
+
+/* Reads a byte at user virtual address UADDR.
+   UADDR must be below PHYS_BASE.
+   Returns the byte value if successful, -1 if a segfault
+   occurred. */
+static int
+get_user (const uint8_t *uaddr)
+{
+  int result;
+  asm ("movl $1f, %0; movzbl %1, %0; 1:"
+       : "=&a" (result) : "m" (*uaddr));
+  return result;
+}
+
+/* Writes BYTE to user address UDST.
+   UDST must be below PHYS_BASE.
+   Returns true if successful, false if a segfault occurred. */
+static bool
+put_user (uint8_t *udst, uint8_t byte)
+{
+  int error_code;
+  asm ("movl $1f, %0; movb %b2, %1; 1:"
+       : "=&a" (error_code), "=m" (*udst) : "q" (byte));
+  return error_code != -1;
+}
+
+/** Read data from user virtual address to kernel vaddr. 
+ * Returs true if successfule, false if a segfault occurred
+*/
+bool
+read_from_user (void *uaddr, void *dst, size_t bytes)
+{
+  if (!(is_user_vaddr(uaddr) && is_user_vaddr(uaddr + bytes - 1) && is_kernel_vaddr(dst))) {
+    return false;
+  }
+    
+  // ASSERT(is_user_vaddr(uaddr));
+  // ASSERT(is_user_vaddr(uaddr + bytes - 1));
+  // ASSERT(is_kernel_vaddr(dst));
+
+  uint8_t *udst = dst;
+  while (bytes > 0) 
+    {
+      int byte = get_user (uaddr);
+      if (byte == -1)
+        return false;
+      *udst = byte;
+      uaddr++;
+      udst++;
+      bytes--;
+    }
+  return true;
+}
+
+/** Write data from kernel virtual address to user vaddr. 
+ * Returs true if successfule, false if a segfault occurred
+*/
+bool
+write_to_user (void *uaddr, void *src, size_t bytes)
+{
+   if (!(is_user_vaddr(uaddr) && is_user_vaddr(uaddr + bytes - 1) && is_kernel_vaddr(src))) {
+    return false;
+  }
+  // ASSERT(is_user_vaddr(uaddr));
+  // ASSERT(is_user_vaddr(uaddr + bytes - 1));
+  // ASSERT(is_kernel_vaddr(src));
+
+  uint8_t *usrc = src;
+  while (bytes > 0) 
+    {
+      if (!put_user (uaddr, *usrc))
+        return false;
+      uaddr++;
+      usrc++;
+      bytes--;
+    }
+  return true;
+}
+
+bool check_user_pointer(const void *uaddr, size_t bytes, bool writeable) {
+  if (!(is_user_vaddr(uaddr) && is_user_vaddr(uaddr + bytes - 1))) {
+    return false;
+  }
+  for (char *start = pg_round_down(uaddr); start <= pg_round_down(uaddr + bytes); start += PGSIZE) 
+    {
+      uint32_t *pte = lookup_page(active_pd(), start, false);
+      if (pte == NULL || !(*pte & PTE_P) || (writeable && !(*pte & PTE_W))) {
+        return false;
+      }
+    }
+  return true;
+}
