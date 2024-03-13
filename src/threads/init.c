@@ -128,7 +128,9 @@ pintos_init (void)
   locate_block_devices ();
   filesys_init (format_filesys);
 #endif
-
+#ifdef VM
+vm_init();
+#endif
   printf ("Boot complete.\n");
   
   if (*argv != NULL) {

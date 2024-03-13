@@ -6,6 +6,10 @@
 #include "pagedir.h"
 #include "devices/input.h"
 
+
+static int 
+check_str(char *puser);
+
 uint32_t sys_halt(struct intr_frame *f) {
     shutdown_power_off();
     NOT_REACHED();
@@ -81,8 +85,8 @@ uint32_t sys_exec(struct intr_frame *f) {
         thread_exit_with_status(-1);
     }
     
-    success = check_user_pointer(cmd_line, MAX_ARGS_LEN, false);
-    if (!success) {
+    int size = check_str(cmd_line);
+    if (size == -1) {
         thread_exit_with_status(-1);
     }
     return process_execute(cmd_line);
@@ -106,12 +110,16 @@ uint32_t sys_create(struct intr_frame *f){
     if (!success) {
         thread_exit_with_status(-1);
     }
-    if (check_user_pointer(file, MAX_ARGS_LEN, false) == false) {
+    int len = check_str(file);
+    if (len == -1) {
         thread_exit_with_status(-1);
     }
+    pin_user_pointer(file, len);
     filesys_getlock();
     bool ret = filesys_create(file, initial_size);
     filesys_releaselock();
+    unpin_user_pointer(file, len);
+
     return ret;
 }
 uint32_t sys_remove(struct intr_frame *f){
@@ -120,12 +128,16 @@ uint32_t sys_remove(struct intr_frame *f){
     if (!success) {
         thread_exit_with_status(-1);
     }
-    if (check_user_pointer(file, MAX_ARGS_LEN, false) == false) {
+    int len = check_str(file);
+    if (len == -1) {
         thread_exit_with_status(-1);
     }
+
+    pin_user_pointer(file, len);
     filesys_getlock();
     bool ret = filesys_remove(file);
     filesys_releaselock();
+    unpin_user_pointer(file, len);
     return ret;
 }
 uint32_t sys_open(struct intr_frame *f){
@@ -134,12 +146,17 @@ uint32_t sys_open(struct intr_frame *f){
     if (!success) {
         thread_exit_with_status(-1);
     }
-    if (check_user_pointer(file, MAX_ARGS_LEN, false) == false) {
+    int len = check_str(file);
+    if (len == -1) {
         thread_exit_with_status(-1);
     }
+
+    pin_user_pointer(file, len);
     filesys_getlock();
     struct file *fileptr = filesys_open(file);
     filesys_releaselock();
+    unpin_user_pointer(file, len);
+
     if (fileptr == NULL) {
         // filesys_releaselock();
         return -1;
@@ -202,9 +219,13 @@ uint32_t sys_read(struct intr_frame *f){
     if (file == NULL) {
         return -1;
     }
+
+    pin_user_pointer(buffer, size);
     filesys_getlock();
     int ret = file_read(file->file, buffer, size);
     filesys_releaselock();
+    unpin_user_pointer(buffer, size);
+
     return ret;
 }
 uint32_t sys_seek(struct intr_frame *f){
@@ -281,4 +302,17 @@ uint32_t sys_isdir(struct intr_frame *f){
 }
 uint32_t sys_inumber(struct intr_frame *f){
     PANIC("sys_inumber");
+}
+
+static int 
+check_str(char *puser) {
+    int size = 0;
+    while (check_user_pointer(puser, 1, false)) {
+        size++;
+        if (*puser == '\0') {
+            return size;
+        }
+        puser++;
+    }
+    return -1;
 }

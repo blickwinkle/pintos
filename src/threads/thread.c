@@ -17,7 +17,9 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
-
+#ifdef VM
+#include "vm/vm.h"
+#endif
 /** Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -259,6 +261,11 @@ thread_create (const char *name, int priority,
   list_push_back(&thread_current()->child_list, &t->child_self->elem);
   t->child_self->exit_status = -1;
   t->child_self->father_exit = false;
+#endif
+
+#ifdef VM
+// t->spt = malloc(sizeof(struct supplemental_page_table));
+supplemental_page_table_init(&t->spt, t);
 #endif
 
   /* Stack frame for kernel_thread(). */
@@ -732,6 +739,9 @@ t->exec_file = NULL;
   } else {
     t->priority = cacl_priority(t->nice, t->recent_cpu);
   }
+
+
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);

@@ -5,6 +5,10 @@ struct page;
 enum vm_type;
 
 struct anon_page {
+    vm_initializer *init; 
+    void *aux;
+    size_t slot;
+    bool isDirty;
 };
 
 void vm_anon_init (void);

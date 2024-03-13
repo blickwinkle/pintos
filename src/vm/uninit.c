@@ -25,7 +25,7 @@ static const struct page_operations uninit_ops = {
 /* DO NOT MODIFY this function */
 void
 uninit_new (struct page *page, void *va, vm_initializer *init,
-		enum vm_type type, void *aux,
+		enum vm_type type, void *aux, bool writable, struct supplemental_page_table *spt,
 		bool (*initializer)(struct page *, enum vm_type, void *)) {
 	ASSERT (page != NULL);
 
@@ -33,6 +33,9 @@ uninit_new (struct page *page, void *va, vm_initializer *init,
 		.operations = &uninit_ops,
 		.va = va,
 		.frame = NULL, /* no frame for now */
+		.pin_count = 0,
+		.writable = writable,
+		.spt = spt,
 		.uninit = (struct uninit_page) {
 			.init = init,
 			.type = type,
@@ -51,8 +54,12 @@ uninit_initialize (struct page *page, void *kva) {
 	vm_initializer *init = uninit->init;
 	void *aux = uninit->aux;
 
-	/* TODO: You may need to fix this function. */
-	return uninit->page_initializer (page, uninit->type, kva) &&
+	/** TODO: You may need to fix this function. 
+	 * After trans the page, you should call the initializer: swap_in
+	*/
+
+
+	return uninit->page_initializer (page, uninit->type, kva) && 
 		(init ? init (page, aux) : true);
 }
 

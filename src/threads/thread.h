@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include "lib/kernel/fixpoint.h"
 #include "threads/synch.h"
-
+#include "vm/vm.h"
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -30,7 +30,7 @@ typedef int tid_t;
 
 #define PRIORITY_UPDATE_FRE 4           /**< Interval ticks when recaculate priority. Used in 4.4BSD*/
 
-
+struct supplemental_page_table;
 struct donated_priority {
    int priority;
    struct lock *lock;
@@ -128,6 +128,10 @@ struct thread
     int next_fd;                      /**< Next file descriptor. */
     struct list file_list;             /**< List of file descriptors. */
     struct file *exec_file;           /**< Executable file. */
+#endif
+
+#ifdef VM
+      struct supplemental_page_table spt; /**< Supplemental page table. */
 #endif
 
     /* Owned by thread.c. */

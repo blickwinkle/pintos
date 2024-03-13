@@ -48,6 +48,19 @@
         "flags.h": "c",
         "input.h": "c",
         "lib.h": "c",
-        "main.h": "c"
+        "main.h": "c",
+        "chrono": "c",
+        "compare": "c",
+        "ranges": "c",
+        "ratio": "c",
+        "memory_resource": "c",
+        "vm.h": "c",
+        "vaddr.h": "c",
+        "swap.h": "c",
+        "deque": "c",
+        "string": "c",
+        "vector": "c",
+        "stop_token": "c",
+        "block.h": "c"
     }
 }
