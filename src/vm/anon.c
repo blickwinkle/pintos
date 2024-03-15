@@ -46,7 +46,8 @@ anon_initializer (struct page *page, enum vm_type type, void *kva) {
 static bool
 isLoadSegPage(struct page *page) {
 	struct anon_page *anon_page = &page->anon;
-	return anon_page->init == lazy_load_segment && !anon_page->isDirty;
+	// return anon_page->init == lazy_load_segment && !anon_page->isDirty;
+	return false;
 }
 
 /* Swap in the page by read contents from the swap disk. */

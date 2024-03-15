@@ -12,6 +12,8 @@
 /* Locks */
 static struct lock frame_lock;
 
+static struct list_elem frame_clock_hand;
+
 static struct list frame_table;
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -25,6 +27,9 @@ vm_init (void) {
 #endif
 	lock_init (&frame_lock);
 	list_init (&frame_table);
+
+
+	list_push_back(&frame_table, &frame_clock_hand);
 
 	
 
@@ -139,14 +144,51 @@ vm_get_victim (void) {
 
 	lock_acquire(&frame_lock);
 	
-	for (struct list_elem *e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e)) {
+	// for (struct list_elem *e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e)) {
+	// 	struct frame *tmp_v = list_entry(e, struct frame, elem);
+	// 	if (tmp_v->page->pin_count == 0 && lock_try_acquire(&tmp_v->page->spt->lock)) {
+	// 		list_remove(e);
+	// 		victim = tmp_v;
+	// 		break;
+	// 	}
+	// }
+
+	for (struct list_elem *e = list_next(&frame_clock_hand); e != list_end(&frame_table); e = list_next(e)) {
 		struct frame *tmp_v = list_entry(e, struct frame, elem);
 		if (tmp_v->page->pin_count == 0 && lock_try_acquire(&tmp_v->page->spt->lock)) {
-			list_remove(e);
-			victim = tmp_v;
-			break;
+			if (pagedir_is_accessed(tmp_v->page->spt->thread->pagedir, tmp_v->page->va)) {
+				pagedir_set_accessed(tmp_v->page->spt->thread->pagedir, tmp_v->page->va, false);
+				lock_release(&tmp_v->page->spt->lock);
+			} else {
+				victim = tmp_v;
+				list_remove(&frame_clock_hand);
+				list_insert(e, &frame_clock_hand);
+
+				list_remove(e);
+				break;
+			}
 		}
 	}
+
+	if (victim == NULL) {
+		for (struct list_elem *e = list_begin(&frame_table); e != &frame_clock_hand; e = list_next(e)) {
+			struct frame *tmp_v = list_entry(e, struct frame, elem);
+			if (tmp_v->page->pin_count == 0 && lock_try_acquire(&tmp_v->page->spt->lock)) {
+				if (pagedir_is_accessed(tmp_v->page->spt->thread->pagedir, tmp_v->page->va)) {
+					pagedir_set_accessed(tmp_v->page->spt->thread->pagedir, tmp_v->page->va, false);
+					lock_release(&tmp_v->page->spt->lock);
+				} else {
+					victim = tmp_v;
+					list_remove(&frame_clock_hand);
+					list_insert(e, &frame_clock_hand);
+					list_remove(e);
+					break;
+				}
+			}
+		}
+	}
+
+
 	lock_release(&frame_lock);
 
 	return victim;
@@ -159,7 +201,7 @@ vm_evict_frame (void) {
 	struct frame *victim = vm_get_victim ();
 	
 	for (int i = 0; i < 6 && victim == NULL; i++) {
-		timer_msleep(5 + i * 3);
+		// timer_msleep(5 + i * 3);
 		victim = vm_get_victim();
 	}
 	if (victim == NULL) {
@@ -321,14 +363,17 @@ vm_do_claim_page (struct page *page) {
 	
 
 	pagedir_set_page (t->pagedir, page->va, frame->kva, page->writable);
+	pagedir_set_accessed (t->pagedir, page->va, false);
+
 	lock_release(&t->spt.lock);
 
 	bool ret = swap_in (page, frame->kva);
 
-	lock_acquire(&t->spt.lock);
+
+	// lock_acquire(&frame_lock);
 	
-	pagedir_set_accessed (t->pagedir, page->va, false);
-	pagedir_set_dirty (t->pagedir, page->va, false);
+	// // pagedir_set_dirty (t->pagedir, page->va, false);
+	// lock_release(&frame_lock);
 
 	// if (!ret) {
 		
@@ -383,7 +428,13 @@ spt_remove_frame_from_list(struct supplemental_page_table *spt) {
 	struct frame *frame;
 	lock_acquire(&frame_lock);
 	for (e = list_begin(&frame_table); e != list_end(&frame_table); ) {
+		if (e == &frame_clock_hand) {
+			e = list_next(e);
+			continue;
+		}
+
 		frame = list_entry(e, struct frame, elem);
+
 		if (frame->page->spt == spt) {
 			e = list_remove(e);
 			// list_remove(e);

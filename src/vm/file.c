@@ -67,7 +67,7 @@ file_backed_swap_in (struct page *page, void *kva) {
 	}
 	memset(kva + read_len, 0, PGSIZE - read_len);
 	
-	
+	pagedir_set_dirty(page->spt->thread->pagedir, page->va, false);
 
 	return true;
 }
