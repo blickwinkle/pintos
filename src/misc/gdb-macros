@@ -131,8 +131,10 @@ define hook-stop
         # if this was in user mode, the OS should handle it
         # either handle the page fault or terminate the process
         if ($savedeip < 0xC0000000)
-            printf "pintos-debug: a page fault exception occurred in user mode\n"
-            printf "pintos-debug: hit 'c' to continue, or 's' to step to intr_handler\n"
+            # printf "pintos-debug: a page fault exception occurred in user mode\n"
+            # printf "pintos-debug: hit 'c' to continue, or 's' to step to intr_handler\n"
+            # continue
+            
         else
             # if this was in kernel mode, a stack trace might be useful
             printf "pintos-debug: a page fault occurred in kernel mode\n"
@@ -158,4 +160,13 @@ define debugpintos
 end
 document debugpintos
     Attach debugger to pintos process
+end
+
+
+define autopass
+    break *intr0e_stub if $pc == intr0e_stub
+    commands
+        silent
+        continue
+    end
 end

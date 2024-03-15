@@ -255,12 +255,17 @@ thread_create (const char *name, int priority,
 #ifdef USERPROG
   /** TODO: Free the child_self in exit func When father thread end before the child thread*/
   t->child_self = malloc(sizeof(struct child_thread));
+  if (t->child_self == NULL) {
+    palloc_free_page(t);
+    return TID_ERROR;
+  }
   sema_init(&t->child_self->exit_sema, 0);
   t->child_self->tid = tid;
   t->parent = thread_current();
   list_push_back(&thread_current()->child_list, &t->child_self->elem);
   t->child_self->exit_status = -1;
   t->child_self->father_exit = false;
+  // t->usr_stack_size = PGSIZE;
 #endif
 
 #ifdef VM

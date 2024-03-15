@@ -59,6 +59,9 @@ anon_swap_in (struct page *page, void *kva) {
 
 	disk_swap_in(anon_page->slot, kva);
 	anon_page->slot = DISK_SWAP_ERROR;
+
+	
+
 	return true;
 }
 
@@ -81,7 +84,13 @@ anon_swap_out (struct page *page) {
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
 static void
 anon_destroy (struct page *page) {
+
 	struct anon_page *anon_page = &page->anon;
+
+	if (anon_page->aux != NULL) {
+		free(anon_page->aux);
+	}
+
 	if (!isLoadSegPage(page) && anon_page->slot != DISK_SWAP_ERROR) {
 		disk_swap_free(anon_page->slot);
 	} else if (page->frame != NULL){

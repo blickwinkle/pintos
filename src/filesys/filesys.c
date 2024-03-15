@@ -107,10 +107,12 @@ do_format (void)
 }
 
 void filesys_getlock(void){
-  lock_acquire(&filesys_lock);
+  if (!lock_held_by_current_thread(&filesys_lock))
+    lock_acquire(&filesys_lock);
 }
 
 void filesys_releaselock(void){
+  if (lock_held_by_current_thread(&filesys_lock))
   lock_release(&filesys_lock);
 }
 

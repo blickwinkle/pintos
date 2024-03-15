@@ -7,6 +7,7 @@
 #include "threads/vaddr.h"
 #include "swap.h"
 #include "lib/kernel/list.h"
+#include "threads/interrupt.h"
 
 /* Locks */
 static struct lock frame_lock;
@@ -52,7 +53,8 @@ page_get_type (struct page *page) {
 static struct frame *vm_get_victim (void);
 static bool vm_do_claim_page (struct page *page);
 static struct frame *vm_evict_frame (void);
-
+static bool
+vm_stack_growth (void *addr);
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
@@ -86,49 +88,7 @@ err:
 	return false;
 }
 
-bool
-vm_page_exist(void *va, bool writable) {
-	ASSERT(pg_round_down(va) == va);
-	struct supplemental_page_table *spt = &thread_current ()->spt;
-	struct page *page = spt_find_page(spt, va);
-	if (page == NULL) {
-		return false;
-	}
-	return page->writable || !writable;
-}
 
-bool
-vm_pin_page(void *va) {
-	ASSERT(pg_round_down(va) == va);
-	struct supplemental_page_table *spt = &thread_current ()->spt;
-	struct page *page = spt_find_page(spt, va);
-	if (page == NULL) {
-		return true;
-	}
-
-	lock_acquire(&page->spt->lock);
-	page->pin_count++;
-	lock_release(&page->spt->lock);
-	
-	if (page->frame == NULL) {
-		return vm_do_claim_page(page);
-	}
-	return true;
-}
-
-bool
-vm_unpin_page(void *va) {
-	ASSERT(pg_round_down(va) == va);
-	struct supplemental_page_table *spt = &thread_current ()->spt;
-	struct page *page = spt_find_page(spt, va);
-	if (page == NULL) {
-		return true;
-	}
-	lock_acquire(&page->spt->lock);
-	page->pin_count--;
-	lock_release(&page->spt->lock);
-	return true;
-}
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
@@ -158,8 +118,17 @@ spt_insert_page (struct supplemental_page_table *spt,
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	ASSERT(lock_held_by_current_thread(&spt->lock));
+
+	if (page->frame != NULL) {
+		lock_acquire(&frame_lock);
+		list_remove(&page->frame->elem);
+		lock_release(&frame_lock);
+	}
+	
+	hash_delete(&spt->pages, &page->elem);
 	vm_dealloc_page (page);
-	return true;
+	// return true;
 }
 
 /* Get the struct frame, that will be evicted. Get the usr spt lock and Del it from frame list*/
@@ -189,6 +158,10 @@ static struct frame *
 vm_evict_frame (void) {
 	struct frame *victim = vm_get_victim ();
 	
+	for (int i = 0; i < 6 && victim == NULL; i++) {
+		timer_msleep(5 + i * 3);
+		victim = vm_get_victim();
+	}
 	if (victim == NULL) {
 		return NULL;
 	}
@@ -239,6 +212,10 @@ vm_get_frame (void) {
 		return frame;
 	}
 	frame = malloc (sizeof (struct frame));
+	if (frame == NULL) {
+		palloc_free_page (kva);
+		return NULL;
+	}
 	frame->kva = kva;
 
 	// ASSERT (frame->page == NULL);
@@ -246,13 +223,31 @@ vm_get_frame (void) {
 }
 
 /* Growing the stack. */
-static void
-vm_stack_growth (void *addr UNUSED) {
+static bool
+vm_stack_growth (void *addr) {
+	// addr = pg_round_down (addr);
+	bool success =  vm_claim_page (addr, true);
+	if (success) {
+		memset(pg_round_down(addr), 0, PGSIZE);
+	}
+	return success;
 }
 
 /* Handle the fault on write_protected page */
 static bool
 vm_handle_wp (struct page *page UNUSED) {
+}
+
+static bool
+is_stack_growth (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
+	if (user && not_present) {
+		void *esp = f->esp;
+		
+		if ((addr >= (esp - 32)) && addr >= (((uint8_t *)PHYS_BASE) - USR_STACK_MAX)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 /* Return true on success */
@@ -264,13 +259,20 @@ bool vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool writ
 	
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
+	void *old_addr = addr;
 	addr = pg_round_down (addr);
 
 	page = spt_find_page(spt, addr);
-	if (page == NULL || page->frame != NULL) {
+	if (page == NULL) {
+		if (is_stack_growth(f, old_addr, user, write, not_present)) {
+			return vm_stack_growth(old_addr);
+		}
 		/* The page is not found in the spt. Or page have kva*/
 		return false;
 	}
+
+	ASSERT(page->frame == NULL);
+
 	return vm_do_claim_page (page);
 }
 
@@ -284,12 +286,19 @@ vm_dealloc_page (struct page *page) {
 
 /* Claim the page that allocate on VA. */
 bool
-vm_claim_page (void *va UNUSED) {
+vm_claim_page (void *va, bool writable) {
 	struct page *page = NULL;
 	/* TODO: Fill this function */
+	va = pg_round_down (va);
 
-	// if ()
-	PANIC("Not implemented");
+	if (!vm_alloc_page(VM_ANON, va, writable)) {
+		return false;
+	}
+
+	page = spt_find_page(&thread_current ()->spt, va);
+
+	ASSERT(page != NULL);
+
 	return vm_do_claim_page (page);
 }
 
@@ -305,12 +314,22 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	struct thread *t = thread_current();
+	lock_acquire(&t->spt.lock);
+	ASSERT(pagedir_get_page (t->pagedir, page->va) == NULL); 
 
-	ASSERT(pagedir_get_page (thread_current ()->pagedir, page->va) == NULL); 	
+	
 
-	pagedir_set_page (thread_current ()->pagedir, page->va, frame->kva, page->writable);
+	pagedir_set_page (t->pagedir, page->va, frame->kva, page->writable);
+	lock_release(&t->spt.lock);
 
 	bool ret = swap_in (page, frame->kva);
+
+	lock_acquire(&t->spt.lock);
+	
+	pagedir_set_accessed (t->pagedir, page->va, false);
+	pagedir_set_dirty (t->pagedir, page->va, false);
+
 	// if (!ret) {
 		
 	// 	free (frame);
@@ -349,6 +368,7 @@ supplemental_page_table_init (struct supplemental_page_table *spt, struct thread
     hash_init (&spt->pages, page_hash, page_less, NULL);
     spt->thread = t;
     lock_init (&spt->lock);
+	list_init(&spt->mmap_table);
 }
 
 /* Copy supplemental page table from src to dst */
@@ -392,4 +412,51 @@ supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	lock_release(&spt->lock);
 
 	hash_destroy(&spt->pages, page_dealloc_helper);
+}
+
+bool
+vm_page_exist(void *va, bool writable, struct intr_frame *f) {
+	ASSERT(pg_round_down(va) == va);
+	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct page *page = spt_find_page(spt, va);
+	if (page == NULL) {
+		if (is_stack_growth(f, va, true, writable, true)) {
+			return vm_stack_growth(va);
+		}
+		return false;
+	}
+	return page->writable || !writable;
+}
+
+bool
+vm_pin_page(void *va) {
+	ASSERT(pg_round_down(va) == va);
+	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct page *page = spt_find_page(spt, va);
+	if (page == NULL) {
+		return false;
+	}
+
+	lock_acquire(&page->spt->lock);
+	page->pin_count++;
+	lock_release(&page->spt->lock);
+	
+	if (page->frame == NULL) {
+		return vm_do_claim_page(page);
+	}
+	return true;
+}
+
+bool
+vm_unpin_page(void *va) {
+	ASSERT(pg_round_down(va) == va);
+	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct page *page = spt_find_page(spt, va);
+	if (page == NULL) {
+		return false;
+	}
+	lock_acquire(&page->spt->lock);
+	page->pin_count--;
+	lock_release(&page->spt->lock);
+	return true;
 }

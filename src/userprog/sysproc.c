@@ -8,7 +8,7 @@
 
 
 static int 
-check_str(char *puser);
+check_str(char *puser, struct intr_frame *f);
 
 uint32_t sys_halt(struct intr_frame *f) {
     shutdown_power_off();
@@ -54,7 +54,7 @@ uint32_t sys_write(struct intr_frame *f) {
     if (!success) {
         thread_exit_with_status(-1);
     }
-    success = check_user_pointer(buffer, size, false);
+    success = check_user_pointer(buffer, size, false, f);
     if (!success) {
         // free(cpy_buffer);
         thread_exit_with_status(-1);
@@ -85,7 +85,7 @@ uint32_t sys_exec(struct intr_frame *f) {
         thread_exit_with_status(-1);
     }
     
-    int size = check_str(cmd_line);
+    int size = check_str(cmd_line, f);
     if (size == -1) {
         thread_exit_with_status(-1);
     }
@@ -110,7 +110,7 @@ uint32_t sys_create(struct intr_frame *f){
     if (!success) {
         thread_exit_with_status(-1);
     }
-    int len = check_str(file);
+    int len = check_str(file, f);
     if (len == -1) {
         thread_exit_with_status(-1);
     }
@@ -128,7 +128,7 @@ uint32_t sys_remove(struct intr_frame *f){
     if (!success) {
         thread_exit_with_status(-1);
     }
-    int len = check_str(file);
+    int len = check_str(file, f);
     if (len == -1) {
         thread_exit_with_status(-1);
     }
@@ -146,7 +146,7 @@ uint32_t sys_open(struct intr_frame *f){
     if (!success) {
         thread_exit_with_status(-1);
     }
-    int len = check_str(file);
+    int len = check_str(file, f);
     if (len == -1) {
         thread_exit_with_status(-1);
     }
@@ -205,7 +205,7 @@ uint32_t sys_read(struct intr_frame *f){
     if (!success) {
         thread_exit_with_status(-1);
     }
-    success = check_user_pointer(buffer, size, true);
+    success = check_user_pointer(buffer, size, true, f);
     if (!success) {
         thread_exit_with_status(-1);
     }
@@ -283,10 +283,36 @@ uint32_t sys_close(struct intr_frame *f){
     return 0;
 }
 uint32_t sys_mmap(struct intr_frame *f){
-    PANIC("sys_mmap");
+    int fd;
+    void *addr;
+    bool success = argraw(1, f, &fd);
+    if (!success) {
+        thread_exit_with_status(-1);
+    }
+    success = argraw(2, f, &addr);
+    if (!success) {
+        thread_exit_with_status(-1);
+    }
+
+    if (fd == 1 || fd == 0 || addr == 0) {
+        return -1;
+    }
+
+    struct file_descriptor *file = get_file_descriptor(fd);
+    if (file == NULL || file_length(file->file) == 0) {
+        return -1;
+    }
+    return do_mmap(addr, file_length(file->file), true, file->file, 0);
+    
 }
-uint32_t sys_munmap(struct intr_frame *f){
-    PANIC("sys_munmap");
+uint32_t sys_munmap(struct intr_frame *f) {
+    void *addr;
+    bool success = argraw(1, f, &addr);
+    if (!success) {
+        thread_exit_with_status(-1);
+    }
+    do_munmap(addr);
+    return 0;
 }
 uint32_t sys_chdir(struct intr_frame *f){
     PANIC("sys_chdir");
@@ -305,9 +331,9 @@ uint32_t sys_inumber(struct intr_frame *f){
 }
 
 static int 
-check_str(char *puser) {
+check_str(char *puser, struct intr_frame *f) {
     int size = 0;
-    while (check_user_pointer(puser, 1, false)) {
+    while (check_user_pointer(puser, 1, false, f)) {
         size++;
         if (*puser == '\0') {
             return size;

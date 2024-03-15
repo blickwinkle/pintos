@@ -13,7 +13,7 @@ bool
 argraw(int n, struct intr_frame *f, uint32_t *ret)
 {
   // return read_from_user(f->esp + n * sizeof(uint32_t), ret, sizeof(uint32_t));
-  if (check_user_pointer(f->esp + n * sizeof(uint32_t), sizeof(uint32_t), false)) {
+  if (check_user_pointer(f->esp + n * sizeof(uint32_t), sizeof(uint32_t), false, f)) {
     *ret = *(uint32_t *)(f->esp + n * sizeof(uint32_t));
     return true;
   }

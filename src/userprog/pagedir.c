@@ -341,15 +341,15 @@ write_to_user (void *uaddr, void *src, size_t bytes)
   return true;
 }
 
-bool check_user_pointer(const void *uaddr, size_t bytes, bool writeable) {
+bool check_user_pointer(const void *uaddr, size_t bytes, bool writeable, struct intr_frame *f) {
   if (!(is_user_vaddr(uaddr) && is_user_vaddr(uaddr + bytes - 1))) {
     return false;
   }
-  for (char *start = pg_round_down(uaddr); start <= pg_round_down(uaddr + bytes); start += PGSIZE) 
+  for (char *start = pg_round_down(uaddr); start <= pg_round_down(uaddr + bytes - 1); start += PGSIZE) 
     {
       uint32_t *pte = lookup_page(active_pd(), start, false);
       if (pte == NULL || !(*pte & PTE_P) || (writeable && !(*pte & PTE_W))) {
-        return vm_page_exist(start, writeable);
+        if (vm_page_exist(start, writeable, f) == false) return false;
       }
     }
   return true;
@@ -357,13 +357,13 @@ bool check_user_pointer(const void *uaddr, size_t bytes, bool writeable) {
 
 void pin_user_pointer(const void *uaddr, size_t bytes) {
 
-  for (char *start = pg_round_down(uaddr); start <= pg_round_down(uaddr + bytes); start += PGSIZE) {
+  for (char *start = pg_round_down(uaddr); start <= pg_round_down(uaddr + bytes - 1); start += PGSIZE) {
     ASSERT(vm_pin_page(start));
   }
 }
 
 void unpin_user_pointer(const void *uaddr, size_t bytes) {
-  for (char *start = pg_round_down(uaddr); start <= pg_round_down(uaddr + bytes); start += PGSIZE) {
+  for (char *start = pg_round_down(uaddr); start <= pg_round_down(uaddr + bytes - 1); start += PGSIZE) {
     ASSERT(vm_unpin_page(start));
   }
 }

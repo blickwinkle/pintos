@@ -18,8 +18,8 @@ void pagedir_activate (uint32_t *pd);
 bool read_from_user (void *uaddr, void *dst, size_t bytes);
 bool write_to_user (void *uaddr, void *src, size_t bytes);
 
-
-bool check_user_pointer(const void *uaddr, size_t bytes, bool writeable);
+struct intr_frame;
+bool check_user_pointer(const void *uaddr, size_t bytes, bool writeable, struct intr_frame *f);
 
 void pin_user_pointer(const void *uaddr, size_t bytes);
 void unpin_user_pointer(const void *uaddr, size_t bytes);

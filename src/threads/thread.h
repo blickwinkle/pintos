@@ -30,6 +30,8 @@ typedef int tid_t;
 
 #define PRIORITY_UPDATE_FRE 4           /**< Interval ticks when recaculate priority. Used in 4.4BSD*/
 
+#define USR_STACK_MAX (1 << 23)         /**< Max size of user stack. 8mb */
+
 struct supplemental_page_table;
 struct donated_priority {
    int priority;
@@ -128,6 +130,7 @@ struct thread
     int next_fd;                      /**< Next file descriptor. */
     struct list file_list;             /**< List of file descriptors. */
     struct file *exec_file;           /**< Executable file. */
+   //  size_t usr_stack_size;                   /**< Stack size. */
 #endif
 
 #ifdef VM

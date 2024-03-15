@@ -218,6 +218,10 @@ donate_priority (struct lock *lock) {
   old_level = intr_disable ();
   donated_t = lock->holder;
 
+  if (self == donated_t) {
+    printf("bad donated!\n");
+  }
+
   /** 不能自己捐给自己*/
   ASSERT(self != donated_t);
 
@@ -227,6 +231,9 @@ donate_priority (struct lock *lock) {
   */
   if (donated_t != NULL && donated_t->origin_priority < self->priority) {
     struct donated_priority *donate = (struct donated_priority *)malloc(sizeof donate_priority); // 在release_donate中free
+    if (donate == NULL) {
+      PANIC("malloc failed");
+    }
     donate->lock = lock;
     donate->priority = self->priority;
     list_push_back(&donated_t->donated_list, &donate->elem);

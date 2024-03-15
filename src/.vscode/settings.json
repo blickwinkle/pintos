@@ -61,6 +61,7 @@
         "string": "c",
         "vector": "c",
         "stop_token": "c",
-        "block.h": "c"
+        "block.h": "c",
+        "intr-stubs.h": "c"
     }
 }

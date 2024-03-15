@@ -46,8 +46,11 @@ process_execute (const char *arguments)
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  if (fn_copy == NULL) {
+    printf ("palloc_get_page failed\n");
     return TID_ERROR;
+  }
+    
 
   char *arg_addr = fn_copy + sizeof(struct args_info);
   struct args_info *info = fn_copy;
@@ -77,6 +80,7 @@ process_execute (const char *arguments)
    */
   tid = thread_create (arg_addr, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR) {
+    printf("thread_create failed\n");
     palloc_free_page (fn_copy);
     goto done;
   }
@@ -150,6 +154,7 @@ start_process (void *arguments)
   /* If load failed, quit. */
   
   if (!success) {
+    printf("load failed\n");
     palloc_free_page (arguments);
     thread_exit ();
   }
@@ -711,39 +716,20 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
-  uint8_t *kpage;
-  bool success = false;
+  
+ bool success = vm_claim_page(((uint8_t *) PHYS_BASE) - PGSIZE, true);
+ if (success) {
+  
+   *esp = PHYS_BASE;
+   memset(((uint8_t *) PHYS_BASE) - PGSIZE, 0, PGSIZE);
+} else {
+  printf("setup_stack failed\n");
+}
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
-    }
   return success;
 }
 
-/** Adds a mapping from user virtual address UPAGE to kernel
-   virtual address KPAGE to the page table.
-   If WRITABLE is true, the user process may modify the page;
-   otherwise, it is read-only.
-   UPAGE must not already be mapped.
-   KPAGE should probably be a page obtained from the user pool
-   with palloc_get_page().
-   Returns true on success, false if UPAGE is already mapped or
-   if memory allocation fails. */
-static bool
-install_page (void *upage, void *kpage, bool writable)
-{
-  struct thread *t = thread_current ();
 
-  /* Verify that there's not already a page at that virtual
-     address, then map our page there. */
-  return (pagedir_get_page (t->pagedir, upage) == NULL
-          && pagedir_set_page (t->pagedir, upage, kpage, writable));
-}
+
 
 #endif /* VM */

@@ -63,6 +63,9 @@ struct page {
 	int pin_count;         /* Pin count for eviction */
 	bool writable;         /* Writable or not */
 	struct supplemental_page_table *spt; /* Back reference for spt */
+
+	struct list_elem mmap_elem; /* For mmap list */
+
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
 	union {
@@ -98,11 +101,23 @@ struct page_operations {
 #define destroy(page) \
 	if ((page)->operations->destroy) (page)->operations->destroy (page)
 
+struct mmap_file {
+	int mapid;
+	struct file *file;
+	struct list_elem elem;
+	void *start;
+	int len;
+	int offset;
+	bool writable;
+	struct list pages;
+};
+
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
     struct hash pages;
+	struct list mmap_table;
     struct thread *thread;
     struct lock lock;
 };
@@ -127,10 +142,10 @@ bool vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool writ
 bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
 		bool writable, vm_initializer *init, void *aux);
 void vm_dealloc_page (struct page *page);
-bool vm_claim_page (void *va);
+bool vm_claim_page (void *va, bool writable);
 enum vm_type page_get_type (struct page *page);
 
-bool vm_page_exist(void *va, bool writable);
+bool vm_page_exist(void *va, bool writable, struct intr_frame *f);
 bool vm_pin_page(void *va);
 bool vm_unpin_page(void *va);
 
